@@ -63,9 +63,9 @@ class EnhancedSlimeMold:
                 'max_branch_angle': np.pi / 1.5
             },
             'survival': {
-                'attached_survival': 0.98,
-                'free_survival': 0.91,
-                'inactive_survival': 0.84  # 无营养时的存活率
+                'attached_survival': 0.99,
+                'free_survival': 0.94,
+                'inactive_survival': 0.90  # 无营养时的存活率
             },
             'gaussian_blur': 1.2,
             'merge_distance': 3  # 代理合并距离
@@ -360,7 +360,7 @@ class EnhancedSlimeMold:
         # 创建动画
         ani = animation.FuncAnimation(
             self.fig, self.update,
-            frames=150,  # 减少帧数以减小文件大小
+            frames=350,  # 减少帧数以减小文件大小
             interval=50,
             blit=False,
             cache_frame_data=False
@@ -370,7 +370,7 @@ class EnhancedSlimeMold:
         ani.save(
             'slime_mold_simulation.gif',
             writer='pillow',  # 使用 Pillow 保存 GIF
-            fps=20,  # 帧率
+            fps=50,  # 帧率
             progress_callback=lambda i, n: print(f'渲染进度: {i * 100 / n:.1f}%', end='\r'),
             dpi=100,
             savefig_kwargs={'facecolor': '#0F0F0F'}
@@ -380,5 +380,5 @@ class EnhancedSlimeMold:
 
 
 if __name__ == "__main__":
-    sim = EnhancedSlimeMold(500, 100, 1000)
+    sim = EnhancedSlimeMold(500, 500, 1000)
     sim.run_animation()
