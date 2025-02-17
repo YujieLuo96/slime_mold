@@ -1,9 +1,12 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import tkinter as tk
+from tkinter import ttk
 from scipy.spatial import cKDTree
 from scipy.ndimage import gaussian_filter
-
 
 class EnhancedSlimeMold:
     def __init__(self, size=500, num_nutrients=200, num_agents=1000):
@@ -29,7 +32,7 @@ class EnhancedSlimeMold:
         self.agents = np.random.rand(num_agents, 2) * size
         self.agent_angles = np.random.rand(num_agents) * 2 * np.pi
         self.agent_attached = np.full(num_agents, -1, dtype=int)
-        self.agent_step_multiplier = np.ones(num_agents)  # 新增步长乘数
+        self.agent_step_multiplier = np.ones(num_agents)
 
         self.trail_map = np.zeros((size, size))
         self.nutrient_tree = cKDTree(self.nutrients['position'])
@@ -39,7 +42,7 @@ class EnhancedSlimeMold:
             'nutrient': {
                 'activation_range': 3,
                 'max_lifetime': 45,
-                'consumption_radius': 8  # 新增消耗半径
+                'consumption_radius': 8
             },
             'sensor': {
                 'angle': np.pi / 4,
@@ -49,7 +52,7 @@ class EnhancedSlimeMold:
                 'attached_step': 0.7,
                 'free_step': 2.8,
                 'max_rotate': np.pi / 5,
-                'inactive_rotate': np.pi / 9  # 无营养时的旋转限制
+                'inactive_rotate': np.pi / 9
             },
             'pheromone': {
                 'attached_deposit': 1200,
@@ -57,18 +60,18 @@ class EnhancedSlimeMold:
                 'decay': 0.95
             },
             'reproduction': {
-                'attached_prob': 0.25,  # 提高附着分裂概率
+                'attached_prob': 0.25,
                 'free_prob': 0.01,
-                'explore_prob': 0.2,  # 新增探索概率
+                'explore_prob': 0.2,
                 'max_branch_angle': np.pi / 1.5
             },
             'survival': {
                 'attached_survival': 0.98,
                 'free_survival': 0.91,
-                'inactive_survival': 0.84  # 无营养时的存活率
+                'inactive_survival': 0.84
             },
             'gaussian_blur': 1.2,
-            'merge_distance': 3  # 代理合并距离
+            'merge_distance': 3
         }
 
     def batch_sense(self, positions, angles):
@@ -273,98 +276,286 @@ class EnhancedSlimeMold:
         self.agent_step_multiplier = self.agent_step_multiplier[mask]
 
     def update(self, frame):
-        """更新动画帧"""
+        """更新模拟状态，返回需要绘制的数据"""
         self.trail_map *= self.params['pheromone']['decay']
         self.update_agents()
         self.update_nutrient_states()
 
+        # 返回绘图数据
+        return {
+            "trail_map": self.trail_map,
+            "nutrients": self.nutrients,
+            "agents": len(self.agents),
+            "energy": np.sum(self.nutrients['energy'])
+        }
+
+
+class SlimeMoldUI:
+    def __init__(self, master):
+        self.master = master
+        master.title("智能黏菌模拟器")
+        master.configure(bg='#2E2E2E')
+
+        # 初始化模拟参数
+        self.sim_params = {
+            'size': 500,
+            'num_nutrients': 200,
+            'num_agents': 1000,
+            'sensor_distance': 9,
+            'sensor_angle': np.pi/4,
+            'free_step': 2.8,
+            'attached_step': 0.7,
+            'pheromone_decay': 0.95,
+            'blur_sigma': 1.2
+        }
+
+        # 创建模拟实例
+        self.sim = EnhancedSlimeMold(
+            size=self.sim_params['size'],
+            num_nutrients=self.sim_params['num_nutrients'],
+            num_agents=self.sim_params['num_agents']
+        )
+
+        # 设置UI布局
+        self.setup_ui()
+        self.is_running = False
+
+    def setup_ui(self):
+        # 创建主框架
+        main_frame = ttk.Frame(self.master)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 左侧画布区域
+        self.setup_canvas(main_frame)
+
+        # 右侧控制面板
+        control_frame = ttk.LabelFrame(main_frame, text="控制面板", padding=10)
+        control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
+
+        # 控制按钮
+        self.setup_buttons(control_frame)
+
+        # 参数调节滑动条
+        self.setup_sliders(control_frame)
+
+        # 状态显示
+        self.setup_stats(control_frame)
+
+    def setup_canvas(self, parent):
+        """设置绘图画布"""
+        canvas_frame = ttk.Frame(parent)
+        canvas_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.fig = Figure(figsize=(6, 6), facecolor='#1A1A1A')
+        self.ax = self.fig.add_subplot(111)
+        self.ax.axis('off')
+
+        self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.canvas.mpl_connect('button_press_event', self.add_nutrient)
+
+    def setup_buttons(self, parent):
+        """设置控制按钮"""
+        btn_style = ttk.Style()
+        btn_style.configure('TButton', font=('Arial', 9), padding=5)
+
+        btn_frame = ttk.Frame(parent)
+        btn_frame.pack(fill=tk.X, pady=5)
+
+        self.start_btn = ttk.Button(btn_frame, text="开始", command=self.toggle_simulation)
+        self.start_btn.pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(btn_frame, text="重置", command=self.reset_simulation).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="清空", command=self.clear_simulation).pack(side=tk.LEFT, padx=2)
+
+    def setup_sliders(self, parent):
+        """创建参数调节滑动条"""
+        slider_frame = ttk.LabelFrame(parent, text="参数调节", padding=10)
+        slider_frame.pack(fill=tk.X, pady=5)
+
+        params = [
+            ('sensor_distance', '传感器距离', 1, 20),
+            ('sensor_angle', '传感器角度', 0, np.pi / 2),
+            ('free_step', '自由步长', 0.1, 5),
+            ('attached_step', '附着步长', 0.1, 2),
+            ('pheromone_decay', '信息素衰减', 0.8, 0.99),
+            ('blur_sigma', '模糊强度', 0.5, 3)
+        ]
+
+        self.sliders = {}
+        for param in params:
+            frame = ttk.Frame(slider_frame)
+            frame.pack(fill=tk.X, pady=2)
+
+            label = ttk.Label(frame, text=param[1], width=12)
+            label.pack(side=tk.LEFT)
+
+            slider = ttk.Scale(frame, from_=param[2], to=param[3],
+                               command=lambda v, p=param[0]: self.update_param(p, float(v)))
+            slider.set(self.sim_params.get(param[0], 1))
+            slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            self.sliders[param[0]] = slider
+
+    def setup_stats(self, parent):
+        """设置统计信息显示"""
+        stats_frame = ttk.LabelFrame(parent, text="实时统计", padding=10)
+        stats_frame.pack(fill=tk.X, pady=5)
+
+        self.stats_labels = {
+            'agents': ttk.Label(stats_frame, text="代理数量: 0"),
+            'nutrients': ttk.Label(stats_frame, text="活跃营养物: 0"),
+            'energy': ttk.Label(stats_frame, text="剩余能量: 0")
+        }
+
+        for label in self.stats_labels.values():
+            label.pack(anchor=tk.W)
+
+    def update_param(self, param, value):
+        """更新参数值"""
+        self.sim_params[param] = value
+        if param == 'sensor_distance':
+            self.sim.params['sensor']['distance'] = value
+        elif param == 'sensor_angle':
+            self.sim.params['sensor']['angle'] = value
+        elif param == 'free_step':
+            self.sim.params['movement']['free_step'] = value
+        elif param == 'attached_step':
+            self.sim.params['movement']['attached_step'] = value
+        elif param == 'pheromone_decay':
+            self.sim.params['pheromone']['decay'] = value
+        elif param == 'blur_sigma':
+            self.sim.params['gaussian_blur'] = value
+
+    def toggle_simulation(self):
+        """切换模拟状态"""
+        self.is_running = not self.is_running
+        self.start_btn.config(text="暂停" if self.is_running else "开始")
+        if self.is_running:
+            self.animate()
+
+    def animate(self):
+        """更新动画帧"""
+        if self.is_running:
+            data = self.sim.update(0)  # 获取模拟数据
+
+            # 清除旧绘图
+            self.ax.clear()
+            self.ax.set_xlim(0, self.sim.size)
+            self.ax.set_ylim(0, self.sim.size)
+            self.ax.axis('off')
+
+            # 绘制轨迹图
+            processed_map = gaussian_filter(
+                np.log1p(data['trail_map']),
+                sigma=self.sim.params['gaussian_blur']
+            )
+            self.ax.imshow(
+                processed_map,
+                cmap='inferno',
+                alpha=0.98,
+                vmin=0.1,
+                vmax=5.0,
+                interpolation='hermite',
+                rasterized=True,
+                origin='lower',
+                extent=[0, self.sim.size, 0, self.sim.size]
+            )
+
+            # 绘制营养物
+            if len(data['nutrients']) > 0:
+                active_nutrients = data['nutrients'][data['nutrients']['active']]
+                fading_nutrients = data['nutrients'][~data['nutrients']['active']]
+
+                if len(active_nutrients) > 0:
+                    self.ax.scatter(
+                        active_nutrients['position'][:, 0],
+                        active_nutrients['position'][:, 1],
+                        c='#FF4500',
+                        s=80 * np.sqrt(active_nutrients['energy'] / 100),
+                        edgecolors='#FFD70088',
+                        linewidths=2,
+                        alpha=0.9,
+                        zorder=3,
+                        marker='*'
+                    )
+
+                if len(fading_nutrients) > 0:
+                    self.ax.scatter(
+                        fading_nutrients['position'][:, 0],
+                        fading_nutrients['position'][:, 1],
+                        c='#00FF7F',
+                        s=30,
+                        alpha=0.6,
+                        zorder=2,
+                        marker='o'
+                    )
+
+            # 更新统计信息
+            stats_text = (
+                f"Agents: {data['agents']:,}\n"
+                f"Active Nutrients: {np.sum(data['nutrients']['active'])}\n"
+                f"Remaining Energy: {data['energy']:,}"
+            )
+            self.ax.text(
+                0.02, 0.95, stats_text,
+                transform=self.ax.transAxes,
+                color='white',
+                fontsize=8,
+                verticalalignment='top',
+                bbox=dict(facecolor='black', alpha=0.5, edgecolor='none')
+            )
+
+            self.canvas.draw()
+            self.master.after(33, self.animate)
+
+    def update_stats(self):
+        """更新统计信息"""
+        self.stats_labels['agents'].config(
+            text=f"代理数量: {len(self.sim.agents):,}")
+        self.stats_labels['nutrients'].config(
+            text=f"活跃营养物: {np.sum(self.sim.nutrients['active'])}")
+        self.stats_labels['energy'].config(
+            text=f"剩余能量: {np.sum(self.sim.nutrients['energy']):,}")
+
+    def add_nutrient(self, event):
+        """通过鼠标点击添加营养物"""
+        if event.inaxes is None:
+            return
+
+        new_nutrient = np.zeros(1, dtype=self.sim.nutrients.dtype)
+        new_nutrient['position'] = [[event.xdata, event.ydata]]
+        new_nutrient['active'] = True
+        new_nutrient['id'] = self.sim.nutrient_counter
+        new_nutrient['energy'] = 200
+
+        self.sim.nutrients = np.concatenate([self.sim.nutrients, new_nutrient])
+        self.sim.nutrient_counter += 1
+        self.sim.nutrient_tree = cKDTree(self.sim.nutrients['position'])
+
+    def reset_simulation(self):
+        """重置整个模拟"""
+        self.sim = EnhancedSlimeMold(
+            size=self.sim_params['size'],
+            num_nutrients=self.sim_params['num_nutrients'],
+            num_agents=self.sim_params['num_agents']
+        )
         self.ax.clear()
-        self.ax.set_xlim(0, self.size)
-        self.ax.set_ylim(0, self.size)
         self.ax.axis('off')
+        self.canvas.draw()
 
-        processed_map = gaussian_filter(
-            np.log1p(self.trail_map),
-            sigma=self.params['gaussian_blur']
-        )
-
-        self.ax.imshow(
-            processed_map,
-            cmap='inferno',
-            alpha=0.98,
-            vmin=0.1,
-            vmax=5.0,
-            interpolation='hermite',
-            rasterized=True,
-            origin='lower',
-            extent=[0, self.size, 0, self.size]
-        )
-
-        if len(self.nutrients) > 0:
-            active_nutrients = self.nutrients[self.nutrients['active']]
-            fading_nutrients = self.nutrients[~self.nutrients['active']]
-
-            if len(active_nutrients) > 0:
-                self.ax.scatter(
-                    active_nutrients['position'][:, 0],
-                    active_nutrients['position'][:, 1],
-                    c='#FF4500',
-                    s=80 * np.sqrt(active_nutrients['energy'] / 100),
-                    edgecolors='#FFD70088',
-                    linewidths=2,
-                    alpha=0.9,
-                    zorder=3,
-                    marker='*'
-                )
-
-            if len(fading_nutrients) > 0:
-                self.ax.scatter(
-                    fading_nutrients['position'][:, 0],
-                    fading_nutrients['position'][:, 1],
-                    c='#00FF7F',
-                    s=30,
-                    alpha=0.6,
-                    zorder=2,
-                    marker='o'
-                )
-
-        stats_text = (
-            f"Frame: {frame}\n"
-            f"Agents: {len(self.agents):,}\n"
-            f"Active Nutrients: {np.sum(self.nutrients['active'])}\n"
-            f"Remaining Energy: {np.sum(self.nutrients['energy']):,}"
-        )
-        self.ax.text(
-            0.02, 0.95, stats_text,
-            transform=self.ax.transAxes,
-            color='white',
-            fontsize=8,
-            verticalalignment='top',
-            bbox=dict(facecolor='black', alpha=0.5, edgecolor='none')
-        )
-
-        return self.ax,
-
-    def run_animation(self):
-        """运行动画"""
-        self.fig, self.ax = plt.subplots(
-            figsize=(9, 9),
-            facecolor='#0F0F0F',
-            dpi=150
-        )
-        self.ax.set_facecolor('#0F0F0F')
+    def clear_simulation(self):
+        """清空当前模拟"""
+        self.sim.trail_map.fill(0)
+        self.sim.nutrients = self.sim.nutrients[:0]  # 清空营养物
+        self.sim.agents = np.empty((0, 2))
+        self.ax.clear()
         self.ax.axis('off')
-        self.ax.set_aspect('equal')
-        plt.tight_layout()
-
-        ani = animation.FuncAnimation(
-            self.fig, self.update,
-            frames=300, interval=33,
-            blit=True, cache_frame_data=False
-        )
-        plt.show()
+        self.canvas.draw()
 
 
 if __name__ == "__main__":
-    sim = EnhancedSlimeMold(500, 100, 1000)
-    sim.run_animation()
+    root = tk.Tk()
+    root.geometry("1200x800")
+    app = SlimeMoldUI(root)
+    root.mainloop()
