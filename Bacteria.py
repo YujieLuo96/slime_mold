@@ -1,108 +1,112 @@
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-import tkinter as tk
-from tkinter import ttk
-from scipy.spatial import cKDTree
-from scipy.ndimage import gaussian_filter
+matplotlib.use('TkAgg')  # 设置matplotlib使用TkAgg作为后端
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  # 用于在Tkinter中嵌入matplotlib图形
+from matplotlib.figure import Figure  # 用于创建图形
+import tkinter as tk  # 用于创建GUI
+from tkinter import ttk  # 提供更美观的UI组件
+from scipy.spatial import cKDTree  # 用于高效的空间搜索
+from scipy.ndimage import gaussian_filter  # 用于图像的高斯模糊处理
 
 class EnhancedSlimeMold:
-    def __init__(self, size=500, num_nutrients=200, num_agents=1000):
-        self.size = size
-        self.nutrient_counter = 0
+    def __init__(self, size=500, num_nutrients=100, num_agents=1000):
+        self.size = size  # 模拟区域的大小
+        self.nutrient_counter = 0  # 用于生成唯一的营养物ID
 
         # 初始化营养物
         self.nutrients = np.zeros(num_nutrients, dtype=[
-            ('position', 'f8', 2),
-            ('lifetime', 'i4'),
-            ('active', 'bool'),
-            ('id', 'i4'),
-            ('energy', 'i4')
+            ('position', 'f8', 2),  # 营养物的位置
+            ('lifetime', 'i4'),  # 营养物的生命周期
+            ('active', 'bool'),  # 营养物是否活跃
+            ('id', 'i4'),  # 营养物的唯一ID
+            ('energy', 'i4')  # 营养物的能量
         ])
-        self.nutrients['position'] = np.random.rand(num_nutrients, 2) * size
-        self.nutrients['lifetime'] = 0
-        self.nutrients['active'] = False
-        self.nutrients['id'] = np.arange(num_nutrients)
-        self.nutrients['energy'] = 200
-        self.nutrient_counter = num_nutrients
+        self.nutrients['position'] = np.random.rand(num_nutrients, 2) * size  # 随机初始化营养物位置
+        self.nutrients['lifetime'] = 0  # 初始化生命周期为0
+        self.nutrients['active'] = False  # 初始状态为不活跃
+        self.nutrients['id'] = np.arange(num_nutrients)  # 分配唯一ID
+        self.nutrients['energy'] = 200  # 初始化能量
+        self.nutrient_counter = num_nutrients  # 更新营养物计数器
 
         # 初始化代理
-        self.agents = np.random.rand(num_agents, 2) * size
-        self.agent_angles = np.random.rand(num_agents) * 2 * np.pi
-        self.agent_attached = np.full(num_agents, -1, dtype=int)
-        self.agent_step_multiplier = np.ones(num_agents)
+        self.agents = np.random.rand(num_agents, 2) * size  # 随机初始化代理位置
+        self.agent_angles = np.random.rand(num_agents) * 2 * np.pi  # 随机初始化代理角度
+        self.agent_attached = np.full(num_agents, -1, dtype=int)  # 代理是否附着在营养物上，-1表示未附着
+        self.agent_step_multiplier = np.ones(num_agents)  # 代理的步长乘数
 
-        self.trail_map = np.zeros((size, size))
-        self.nutrient_tree = cKDTree(self.nutrients['position'])
+        self.trail_map = np.zeros((size, size))  # 用于记录代理留下的信息素轨迹
+        self.nutrient_tree = cKDTree(self.nutrients['position'])  # 创建营养物的空间搜索树
 
         # 更新参数配置
         self.params = {
             'nutrient': {
-                'activation_range': 3,
-                'max_lifetime': 45,
-                'consumption_radius': 8
+                'activation_range': 2.5,  # 缩小激活范围促进精确接触
+                'max_lifetime': 150,      # 延长营养物生命周期
+                'consumption_radius': 5   # 缩小消耗半径增加局部代理密度
             },
             'sensor': {
-                'angle': np.pi / 4,
-                'distance': 9
+                'angle': np.pi/3,        # 加宽传感器角度增强环境感知
+                'distance': 11           # 增加感知距离
             },
             'movement': {
-                'attached_step': 0.7,
-                'free_step': 2.8,
-                'max_rotate': np.pi / 5,
-                'inactive_rotate': np.pi / 9
+                'attached_step': 1.2,    # 附着时小步移动增加沉积密度
+                'free_step': 3.5,       # 自由时大步探索新区域
+                'max_rotate': np.pi/4,   # 减少最大转向角度
+                'inactive_rotate': np.pi/8
             },
             'pheromone': {
-                'attached_deposit': 1200,
-                'free_deposit': 250,
-                'decay': 0.95
+                'attached_deposit': 200, # 大幅增加附着沉积量
+                'free_deposit': 10,      # 适当减少自由沉积量
+                'decay': 0.88            # 降低衰减率延长路径持续时间
             },
             'reproduction': {
-                'attached_prob': 0.25,
-                'free_prob': 0.01,
-                'explore_prob': 0.2,
-                'max_branch_angle': np.pi / 1.5
+                'attached_prob': 0.05,   # 提高附着繁殖概率
+                'free_prob': 0.005,       # 降低自由繁殖概率
+                'explore_prob': 0.35,
+                'max_branch_angle': np.pi/2.2  # 缩小分支角度形成更紧密结构
             },
             'survival': {
-                'attached_survival': 0.98,
-                'free_survival': 0.91,
-                'inactive_survival': 0.84
+                'attached_survival': 0.995, # 大幅提高附着生存率
+                'free_survival': 0.82,
+                'inactive_survival': 0.75
             },
-            'gaussian_blur': 1.2,
-            'merge_distance': 3
+            'gaussian_blur': 0.8,        # 减少模糊保持路径锐度
+            'merge_distance': 2          # 缩小合并距离促进主干形成
         }
 
     def batch_sense(self, positions, angles):
-        """批量计算传感器位置"""
-        offsets = np.array([-self.params['sensor']['angle'],
-                            0,
-                            self.params['sensor']['angle']])
-        sensor_angles = angles[:, None] + offsets
+        """批量计算传感器位置（增强边缘检测）"""
+        offsets = np.array([
+            -self.params['sensor']['angle']*1.2,  # 扩大两侧传感器偏移
+            0,
+            self.params['sensor']['angle']*1.2
+        ])
+        sensor_angles = angles[:, None] + offsets  # 计算传感器的角度
         sensor_pos = positions[:, None] + \
                      self.params['sensor']['distance'] * np.stack(
-            [np.cos(sensor_angles), np.sin(sensor_angles)], axis=2)
-        return sensor_pos.reshape(-1, 2)
+            [np.cos(sensor_angles), np.sin(sensor_angles)], axis=2)  # 计算传感器的位置
+        return sensor_pos.reshape(-1, 2)  # 返回传感器位置的二维数组
 
     def update_nutrient_states(self):
         """更新营养物状态"""
-        active_mask = self.nutrients['active']
-        self.nutrients['lifetime'][active_mask] += 1
+        active_mask = self.nutrients['active']  # 获取活跃的营养物
+        self.nutrients['lifetime'][active_mask] += 1  # 更新活跃营养物的生命周期
 
+        # 判断营养物是否过期
         expire_mask = (self.nutrients['lifetime'] > self.params['nutrient']['max_lifetime']) | \
                       (self.nutrients['energy'] <= 0) | \
                       (self.nutrients['position'][:, 0] < 0)
-        expired_nutrients = self.nutrients[expire_mask]
+        expired_nutrients = self.nutrients[expire_mask]  # 获取过期的营养物
 
+        # 处理过期的营养物
         if len(expired_nutrients) > 0:
             expired_ids = expired_nutrients['id']
-            attached_mask = np.isin(self.agent_attached, expired_ids)
-            self.agent_attached[attached_mask] = -1
+            attached_mask = np.isin(self.agent_attached, expired_ids)  # 找到附着在过期营养物上的代理
+            self.agent_attached[attached_mask] = -1  # 解除代理的附着状态
 
-        self.nutrients = self.nutrients[~expire_mask]
+        self.nutrients = self.nutrients[~expire_mask]  # 移除过期的营养物
         if len(self.nutrients) > 0:
-            self.nutrient_tree = cKDTree(self.nutrients['position'])
+            self.nutrient_tree = cKDTree(self.nutrients['position'])  # 更新营养物的空间搜索树
 
     def process_agent_merging(self):
         """处理代理合并（新功能）"""
@@ -175,13 +179,18 @@ class EnhancedSlimeMold:
             attached = nutrient_id != -1
 
             # 方向调整
-            if sensor_values[i, 1] < sensor_values[i, 0] and \
-                    sensor_values[i, 1] < sensor_values[i, 2]:
-                rotate_dir = 1 if sensor_values[i, 0] > sensor_values[i, 2] else -1
-                max_rotate = move_params['max_rotate'] if has_active_nutrients else np.pi / 16
-                angle += rotate_dir * max_rotate
+            if (sensor_values[i, 0] - sensor_values[i, 2]) > 0.1 * sensor_values[i, 1]:
+                rotate_dir = 1
+            elif (sensor_values[i, 2] - sensor_values[i, 0]) > 0.1 * sensor_values[i, 1]:
+                rotate_dir = -1
             else:
-                angle += np.random.uniform(-1, 1) * move_params['max_rotate']
+                rotate_dir = 0
+
+            max_rotate = move_params['max_rotate'] if has_active_nutrients else np.pi / 16
+            angle += rotate_dir * max_rotate
+
+            # 自适应步长调整
+            self.agent_step_multiplier[i] = 0.5 + 1.5 * (sensor_values[i].max() / 100)
 
             # 移动步长
             if attached:
@@ -299,14 +308,14 @@ class SlimeMoldUI:
         # 初始化模拟参数
         self.sim_params = {
             'size': 500,
-            'num_nutrients': 200,
+            'num_nutrients': 50,
             'num_agents': 1000,
-            'sensor_distance': 9,
-            'sensor_angle': np.pi/4,
-            'free_step': 2.8,
-            'attached_step': 0.7,
-            'pheromone_decay': 0.95,
-            'blur_sigma': 1.2
+            'sensor_distance': 11,
+            'sensor_angle': np.pi/3,
+            'free_step': 4.8,
+            'attached_step': 1.2,
+            'pheromone_decay': 0.88,
+            'blur_sigma': 0.8
         }
 
         # 创建模拟实例
@@ -447,17 +456,16 @@ class SlimeMoldUI:
 
             # 绘制轨迹图
             processed_map = gaussian_filter(
-                np.log1p(data['trail_map']),
+                np.log1p(data['trail_map']**1.5),  # 增加非线性增强
                 sigma=self.sim.params['gaussian_blur']
             )
             self.ax.imshow(
                 processed_map,
-                cmap='inferno',
-                alpha=0.98,
-                vmin=0.1,
-                vmax=5.0,
-                interpolation='hermite',
-                rasterized=True,
+                cmap='magma',            # 改用更高对比度的颜色映射
+                alpha=0.92,
+                vmin=0.3,                # 提高显示阈值
+                vmax=7.0,                # 扩展最大值范围
+                interpolation='bicubic',  # 改用更高阶插值
                 origin='lower',
                 extent=[0, self.sim.size, 0, self.sim.size]
             )
