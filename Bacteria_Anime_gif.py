@@ -5,8 +5,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  # 用于在Tkin
 from matplotlib.figure import Figure  # 用于创建图形
 import tkinter as tk  # 用于创建GUI
 from tkinter import ttk  # 提供更美观的UI组件
+from tkinter import filedialog, messagebox  # 用于文件对话框和消息框
 from scipy.spatial import cKDTree  # 用于高效的空间搜索
 from scipy.ndimage import gaussian_filter  # 用于图像的高斯模糊处理
+from PIL import Image  # 用于生成GIF
+import tempfile  # 用于创建临时目录
+import shutil  # 用于清理临时文件
+import os  # 用于路径操作
 
 
 class EnhancedSlimeMold:
@@ -329,6 +334,12 @@ class SlimeMoldUI:
         self.setup_ui()
         self.is_running = False
 
+        # 录制相关属性
+        self.is_recording = False
+        self.recording_frames = []
+        self.temp_dir = tempfile.mkdtemp()
+        self.frame_counter = 0
+
     def setup_ui(self):
         # 创建主框架
         main_frame = ttk.Frame(self.master)
@@ -376,6 +387,67 @@ class SlimeMoldUI:
 
         ttk.Button(btn_frame, text="重置", command=self.reset_simulation).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="清空", command=self.clear_simulation).pack(side=tk.LEFT, padx=2)
+
+        self.record_btn = ttk.Button(btn_frame, text="开始录制", command=self.toggle_recording)
+        self.record_btn.pack(side=tk.LEFT, padx=2)
+
+    def toggle_recording(self):
+        """切换录制状态"""
+        self.is_recording = not self.is_recording
+        if self.is_recording:
+            self.record_btn.config(text="停止录制")
+            self.recording_frames = []
+            self.frame_counter = 0
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+            os.makedirs(self.temp_dir, exist_ok=True)
+        else:
+            self.record_btn.config(text="开始录制")
+            self.save_gif()
+
+    def capture_frame(self):
+        """捕获当前帧并保存到临时目录"""
+        if self.is_recording and self.frame_counter % 3 == 0:  # 每3帧捕获一次
+            path = os.path.join(self.temp_dir, f"frame_{self.frame_counter:05d}.png")
+            self.fig.savefig(path, dpi=80, facecolor=self.fig.get_facecolor(), bbox_inches='tight')
+            self.recording_frames.append(path)
+        self.frame_counter += 1
+
+    def save_gif(self):
+        """将捕获的帧转换为GIF动画"""
+        if not self.recording_frames:
+            return
+
+        # 让用户选择保存路径
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".gif",
+            filetypes=[("GIF动画", "*.gif"), ("所有文件", "*.*")]
+        )
+
+        if filename:
+            try:
+                # 使用PIL创建GIF
+                images = []
+                for path in self.recording_frames:
+                    img = Image.open(path)
+                    images.append(img.copy())
+                    img.close()
+
+                # 保存为GIF（优化颜色表）
+                images[0].save(
+                    filename,
+                    save_all=True,
+                    append_images=images[1:],
+                    optimize=True,
+                    duration=100,  # 每帧100ms（约10fps）
+                    loop=0,
+                    disposal=2  # 每帧处理方式：恢复背景色
+                )
+                messagebox.showinfo("保存成功", f"GIF动画已保存至：\n{filename}")
+            except Exception as e:
+                messagebox.showerror("保存失败", f"生成GIF时出错：\n{str(e)}")
+
+        # 清理临时文件
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def setup_sliders(self, parent):
         """创建参数调节滑动条"""
@@ -519,6 +591,7 @@ class SlimeMoldUI:
 
             self.canvas.draw()
             self.master.after(33, self.animate)
+            self.capture_frame()  # 添加这行
 
     def update_stats(self):
         """更新统计信息"""
