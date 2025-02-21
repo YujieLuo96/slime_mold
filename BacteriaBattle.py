@@ -1,19 +1,3 @@
-"""
-多物种黏菌模拟器
-
-本程序模拟多个物种的黏菌行为，包含以下主要功能：
-1. 多物种差异化参数配置（移动速度、信息素沉积、颜色等）
-2. 基于传感器探测的自主移动行为
-3. 营养物激活与消耗机制
-4. 代理繁殖与合并机制
-5. 物种竞争与密度优势淘汰
-6. 实时可视化界面与参数调节
-
-主要类说明：
-- EnhancedSlimeMold: 模拟核心逻辑，处理代理行为和环境更新
-- SlimeMoldUI: 图形用户界面，提供可视化与交互控制
-"""
-
 import numpy as np
 import matplotlib
 
@@ -25,8 +9,14 @@ from tkinter import ttk
 from scipy.spatial import cKDTree
 from scipy.ndimage import gaussian_filter
 
-BACKGROUND_COLOR = '#2E2E2E'
-BASE_COLOR = '#1A1A1A' # 屏幕外空白处颜色
+BACKGROUND_COLOR = '#2E2E2E' # 最外边框颜色
+BASE_COLOR = '#1A1A1A' # 内画布边空白处颜色
+BASE_CANVAS_COLOR = '#FFFFFF'
+
+# 细菌参数
+
+NUM_BACTERIA = 1000
+NUM_NUT = 200
 
 class EnhancedSlimeMold:
     """黏菌模拟核心类，处理多物种代理的行为逻辑和环境状态"""
@@ -392,8 +382,8 @@ class SlimeMoldUI:
         # 初始化模拟参数
         self.sim_params = {
             'size': 500,
-            'num_nutrients': 200,
-            'num_agents': 1000,
+            'num_nutrients': NUM_NUT,
+            'num_agents': NUM_BACTERIA,
             'num_species': 3,  # 默认物种数量
             'sensor_distance': 11,
             'sensor_angle': np.pi / 3,
@@ -405,14 +395,15 @@ class SlimeMoldUI:
 
         # 初始化模拟器
         self.sim = EnhancedSlimeMold(
-            size=self.sim_params['size'],
-            num_nutrients=self.sim_params['num_nutrients'],
-            num_agents=self.sim_params['num_agents'],
-            num_species=self.sim_params['num_species']
+            size = self.sim_params['size'],
+            num_nutrients = self.sim_params['num_nutrients'],
+            num_agents = self.sim_params['num_agents'],
+            num_species = self.sim_params['num_species']
         )
 
         self.setup_ui()  # 设置UI布局
         self.is_running = False  # 模拟运行状态
+
 
     def setup_ui(self):
         """设置UI布局"""
@@ -571,17 +562,17 @@ class SlimeMoldUI:
                 species_params = self.sim.params['species_params'][s]
                 # 对轨迹图进行预处理（对数变换+高斯模糊）
                 processed_map = gaussian_filter(
-                    np.log1p(data['trail_map'][:, :, s] ** 1.2),  # 非线性增强
+                    np.log1p(data['trail_map'][:, :, s] ** 0.9),  # 非线性增强
                     sigma=self.sim.params['global_params']['gaussian_blur']  # 模糊强度参数
                 )
                 # 创建颜色映射（从黑色到物种颜色）
                 self.ax.imshow(
                     processed_map,
                     cmap=matplotlib.colors.LinearSegmentedColormap.from_list(
-                        'custom', ['#000000', species_params['color']]),
-                    alpha=0.8,  # 整体透明度，值越小越透明
-                    vmin=0.3,  # 颜色映射下限，低于此值不显示
-                    vmax=7.0,  # 颜色映射上限，高于此值饱和
+                        'custom', [BASE_CANVAS_COLOR, species_params['color']]),
+                    alpha= 0.8,  # 整体透明度，值越小越透明
+                    vmin=0.1,  # 颜色映射下限，低于此值不显示
+                    vmax=19.0,  # 颜色映射上限，高于此值饱和
                     interpolation='bicubic',  # 插值方式影响平滑度
                     origin='lower',  # 坐标系原点在左下角
                     extent=[0, self.sim.size, 0, self.sim.size]
